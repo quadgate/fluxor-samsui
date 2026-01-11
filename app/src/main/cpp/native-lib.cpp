@@ -8,6 +8,7 @@
 #include "io_bridge.h"
 #include "socket_manager.h"
 #include "message_encryption.h"
+#include "blob_storage.h"
 
 // Global thread manager instance
 static ThreadManager* g_threadManager = nullptr;
@@ -446,6 +447,170 @@ Java_com_fluxorio_MainActivity_sendImageToThreadHandler(JNIEnv* env, jobject /* 
             g_ioBridge->postStringEvent("image_info", imageInfo);
         }
     });
+}
+
+// Global blob storage instance
+static BlobStorage* g_blobStorage = nullptr;
+
+// Initialize blob storage (called once, can be lazy)
+static BlobStorage* getBlobStorage() {
+    if (g_blobStorage == nullptr) {
+        g_blobStorage = new BlobStorage();
+    }
+    return g_blobStorage;
+}
+
+// Save messages to blob storage
+// Note: $Companion in JNI is represented as _00024Companion (00024 is Unicode for $)
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_fluxorio_BlobStorage_00024Companion_saveMessagesNative(JNIEnv* env, jclass /* clazz */, jstring filePath, jbyteArray data) {
+    if (filePath == nullptr || data == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    BlobStorage* storage = getBlobStorage();
+    if (storage == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    // Convert Java string to C++ string
+    const char* filePathCStr = env->GetStringUTFChars(filePath, nullptr);
+    if (filePathCStr == nullptr) {
+        return JNI_FALSE;
+    }
+    std::string filePathCpp = filePathCStr;
+    env->ReleaseStringUTFChars(filePath, filePathCStr);
+    
+    // Get byte array data
+    jsize length = env->GetArrayLength(data);
+    jbyte* bytes = env->GetByteArrayElements(data, nullptr);
+    if (bytes == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    // Save messages
+    bool result = storage->saveMessages(filePathCpp, reinterpret_cast<const uint8_t*>(bytes), static_cast<size_t>(length));
+    
+    env->ReleaseByteArrayElements(data, bytes, JNI_ABORT);
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// Load messages from blob storage
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_fluxorio_BlobStorage_00024Companion_loadMessagesNative(JNIEnv* env, jclass /* clazz */, jstring filePath) {
+    if (filePath == nullptr) {
+        return nullptr;
+    }
+    
+    BlobStorage* storage = getBlobStorage();
+    if (storage == nullptr) {
+        return nullptr;
+    }
+    
+    // Convert Java string to C++ string
+    const char* filePathCStr = env->GetStringUTFChars(filePath, nullptr);
+    if (filePathCStr == nullptr) {
+        return nullptr;
+    }
+    std::string filePathCpp = filePathCStr;
+    env->ReleaseStringUTFChars(filePath, filePathCStr);
+    
+    // Load messages
+    std::vector<uint8_t> data;
+    if (!storage->loadMessages(filePathCpp, data)) {
+        return nullptr;
+    }
+    
+    // Convert to Java byte array
+    if (data.empty()) {
+        return env->NewByteArray(0);
+    }
+    
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(data.size()));
+    if (result != nullptr) {
+        env->SetByteArrayRegion(result, 0, static_cast<jsize>(data.size()), reinterpret_cast<const jbyte*>(data.data()));
+    }
+    
+    return result;
+}
+
+// Clear all stored messages
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_fluxorio_BlobStorage_00024Companion_clearMessagesNative(JNIEnv* env, jclass /* clazz */, jstring filePath) {
+    if (filePath == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    BlobStorage* storage = getBlobStorage();
+    if (storage == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    // Convert Java string to C++ string
+    const char* filePathCStr = env->GetStringUTFChars(filePath, nullptr);
+    if (filePathCStr == nullptr) {
+        return JNI_FALSE;
+    }
+    std::string filePathCpp = filePathCStr;
+    env->ReleaseStringUTFChars(filePath, filePathCStr);
+    
+    // Clear messages
+    bool result = storage->clearMessages(filePathCpp);
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// Check if messages exist in storage
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_fluxorio_BlobStorage_00024Companion_hasMessagesNative(JNIEnv* env, jclass /* clazz */, jstring filePath) {
+    if (filePath == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    BlobStorage* storage = getBlobStorage();
+    if (storage == nullptr) {
+        return JNI_FALSE;
+    }
+    
+    // Convert Java string to C++ string
+    const char* filePathCStr = env->GetStringUTFChars(filePath, nullptr);
+    if (filePathCStr == nullptr) {
+        return JNI_FALSE;
+    }
+    std::string filePathCpp = filePathCStr;
+    env->ReleaseStringUTFChars(filePath, filePathCStr);
+    
+    // Check if messages exist
+    bool result = storage->hasMessages(filePathCpp);
+    
+    return result ? JNI_TRUE : JNI_FALSE;
+}
+
+// Get storage file size in bytes
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_fluxorio_BlobStorage_00024Companion_getStorageSizeNative(JNIEnv* env, jclass /* clazz */, jstring filePath) {
+    if (filePath == nullptr) {
+        return 0;
+    }
+    
+    BlobStorage* storage = getBlobStorage();
+    if (storage == nullptr) {
+        return 0;
+    }
+    
+    // Convert Java string to C++ string
+    const char* filePathCStr = env->GetStringUTFChars(filePath, nullptr);
+    if (filePathCStr == nullptr) {
+        return 0;
+    }
+    std::string filePathCpp = filePathCStr;
+    env->ReleaseStringUTFChars(filePath, filePathCStr);
+    
+    // Get storage size
+    int64_t size = storage->getStorageSize(filePathCpp);
+    
+    return static_cast<jlong>(size);
 }
 
 // Original stringFromJNI function

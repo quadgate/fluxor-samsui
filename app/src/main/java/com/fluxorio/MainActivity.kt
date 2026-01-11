@@ -216,12 +216,12 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
                 "message_response" -> {
                     hideLoader()
                     // Determine message type based on length
-                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    val messageType = determineMessageType(data)
                     messageAdapter.addMessage(Message(data, false, messageType))
                 }
                 "socket_message" -> {
                     // Message received from socket client
-                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    val messageType = determineMessageType(data)
                     messageAdapter.addMessage(Message("[Socket] $data", false, messageType))
                 }
                 "image_info" -> {
@@ -229,7 +229,7 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
                     messageAdapter.addMessage(Message(data, false, MessageType.IMAGE))
                 }
                 else -> {
-                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    val messageType = determineMessageType(data)
                     messageAdapter.addMessage(Message("[$eventId] $data", false, messageType))
                 }
             }
