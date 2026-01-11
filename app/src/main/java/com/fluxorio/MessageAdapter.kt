@@ -24,6 +24,7 @@ class MessageAdapter(private val messageList: MessageList) :
 
     override fun onBindViewHolder(holder: MessageViewHolder, position: Int) {
         val message = messageList.get(position)
+        // Messages are already decrypted by IOBridge, so display directly
         holder.messageText.text = message.text
         
         val params = holder.messageCard.layoutParams as androidx.constraintlayout.widget.ConstraintLayout.LayoutParams

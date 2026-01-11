@@ -14,7 +14,8 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         native-lib.cpp
         thread_manager.cpp
         io_bridge.cpp
-        socket_manager.cpp)
+        socket_manager.cpp
+        message_encryption.cpp)
 
 # Align native libraries to 16 KB boundaries for Android 15+ compatibility
 target_link_options(${CMAKE_PROJECT_NAME} PRIVATE "-Wl,-z,max-page-size=16384")

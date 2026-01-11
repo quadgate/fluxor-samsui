@@ -9,6 +9,7 @@
 #include <functional>
 #include <atomic>
 #include <cstdint>
+#include "message_encryption.h"
 
 // Forward declaration
 class ThreadManager;
@@ -70,6 +71,9 @@ public:
     // Set thread manager reference
     void setThreadManager(ThreadManager* threadManager);
     
+    // Encryption control
+    void enableEncryption(bool enable);
+    
     // Check if initialized
     bool isInitialized() const;
 
@@ -87,6 +91,9 @@ private:
     std::mutex queueMutex_;
     std::atomic<bool> stopProcessing_;
     std::atomic<bool> processingScheduled_;
+    
+    // Encryption state
+    bool encryptionEnabled_;
     
     // Helper methods
     void invokeStringCallback(JNIEnv* env, const std::string& eventId, const std::string& data);

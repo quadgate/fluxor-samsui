@@ -13,7 +13,8 @@ IOBridge::IOBridge()
       listenerClass_(nullptr),
       threadManager_(nullptr),
       stopProcessing_(false),
-      processingScheduled_(false) {
+      processingScheduled_(false),
+      encryptionEnabled_(false) {
 }
 
 IOBridge::~IOBridge() {
@@ -27,7 +28,13 @@ void IOBridge::initialize(JavaVM* jvm) {
     
     jvm_ = jvm;
     stopProcessing_ = false;
-    LOGI("IOBridge initialized");
+    encryptionEnabled_ = true; // Enable encryption by default for secure channel
+    LOGI("IOBridge initialized with encryption enabled");
+}
+
+void IOBridge::enableEncryption(bool enable) {
+    encryptionEnabled_ = enable;
+    LOGI("IOBridge encryption %s", enable ? "enabled" : "disabled");
 }
 
 void IOBridge::cleanup() {
@@ -120,7 +127,13 @@ void IOBridge::postStringEvent(const std::string& eventId, const std::string& da
     Event event;
     event.type = EventType::STRING;
     event.eventId = eventId;
-    event.stringValue = data;
+    
+    // Encrypt data if encryption is enabled
+    if (encryptionEnabled_) {
+        event.stringValue = encryptMessage(data);
+    } else {
+        event.stringValue = data;
+    }
     
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
@@ -256,7 +269,19 @@ void IOBridge::postByteArrayEvent(const std::string& eventId, const uint8_t* dat
     Event event;
     event.type = EventType::BYTE_ARRAY;
     event.eventId = eventId;
-    event.byteArrayValue.assign(data, data + length);
+    
+    // Encrypt byte array if encryption is enabled
+    if (encryptionEnabled_ && length > 0) {
+        // Convert byte array to string, encrypt, then convert back
+        std::string dataString(reinterpret_cast<const char*>(data), length);
+        std::string encryptedString = encryptMessage(dataString);
+        event.byteArrayValue.assign(
+            reinterpret_cast<const uint8_t*>(encryptedString.data()),
+            reinterpret_cast<const uint8_t*>(encryptedString.data()) + encryptedString.size()
+        );
+    } else {
+        event.byteArrayValue.assign(data, data + length);
+    }
     
     {
         std::lock_guard<std::mutex> lock(queueMutex_);
@@ -300,9 +325,15 @@ void IOBridge::processEvents() {
         jstring eventIdStr = env->NewStringUTF(event.eventId.c_str());
         
         switch (event.type) {
-            case EventType::STRING:
-                invokeStringCallback(env, event.eventId, event.stringValue);
+            case EventType::STRING: {
+                // Decrypt string data if encryption is enabled
+                std::string dataToSend = event.stringValue;
+                if (encryptionEnabled_) {
+                    dataToSend = decryptMessage(event.stringValue);
+                }
+                invokeStringCallback(env, event.eventId, dataToSend);
                 break;
+            }
             case EventType::INT:
                 invokeIntCallback(env, event.eventId, event.intValue);
                 break;
@@ -315,9 +346,24 @@ void IOBridge::processEvents() {
             case EventType::BOOLEAN:
                 invokeBooleanCallback(env, event.eventId, event.boolValue);
                 break;
-            case EventType::BYTE_ARRAY:
-                invokeByteArrayCallback(env, event.eventId, event.byteArrayValue.data(), event.byteArrayValue.size());
+            case EventType::BYTE_ARRAY: {
+                // Decrypt byte array if encryption is enabled
+                if (encryptionEnabled_ && !event.byteArrayValue.empty()) {
+                    std::string encryptedString(
+                        reinterpret_cast<const char*>(event.byteArrayValue.data()),
+                        event.byteArrayValue.size()
+                    );
+                    std::string decryptedString = decryptMessage(encryptedString);
+                    std::vector<uint8_t> decryptedData(
+                        reinterpret_cast<const uint8_t*>(decryptedString.data()),
+                        reinterpret_cast<const uint8_t*>(decryptedString.data()) + decryptedString.size()
+                    );
+                    invokeByteArrayCallback(env, event.eventId, decryptedData.data(), decryptedData.size());
+                } else {
+                    invokeByteArrayCallback(env, event.eventId, event.byteArrayValue.data(), event.byteArrayValue.size());
+                }
                 break;
+            }
         }
         
         if (eventIdStr != nullptr) {

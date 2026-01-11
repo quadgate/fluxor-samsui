@@ -7,6 +7,7 @@
 #include "thread_manager.h"
 #include "io_bridge.h"
 #include "socket_manager.h"
+#include "message_encryption.h"
 
 // Global thread manager instance
 static ThreadManager* g_threadManager = nullptr;
@@ -390,7 +391,7 @@ Java_com_fluxorio_MainActivity_sendMessageToThreadHandler(JNIEnv* env, jobject /
         // Process the message (example: echo it back with processing info)
         std::string processedMessage = "[Processed] " + messageCpp + " (handled by C++ thread)";
         
-        // Send processed message back to Kotlin via I/O bridge
+        // Send message back to Kotlin via I/O bridge (IOBridge will encrypt automatically)
         if (g_ioBridge != nullptr) {
             g_ioBridge->postStringEvent("message_response", processedMessage);
         }

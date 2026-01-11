@@ -1,12 +1,14 @@
 package com.fluxorio
 
+import android.content.Context
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * MessageList - Manages a list of messages with thread-safe operations
  */
-class MessageList {
+class MessageList(private val context: Context? = null) {
     private val messages = CopyOnWriteArrayList<Message>()
+    private val storage: MessageStorage? = context?.let { MessageStorage(it) }
     
     /**
      * Get all messages
@@ -23,6 +25,7 @@ class MessageList {
      */
     fun add(message: Message) {
         messages.add(message)
+        saveToStorage()
     }
     
     /**
@@ -30,20 +33,25 @@ class MessageList {
      */
     fun add(index: Int, message: Message) {
         messages.add(index, message)
+        saveToStorage()
     }
     
     /**
      * Remove a message
      */
     fun remove(message: Message): Boolean {
-        return messages.remove(message)
+        val result = messages.remove(message)
+        if (result) saveToStorage()
+        return result
     }
     
     /**
      * Remove message at index
      */
     fun removeAt(index: Int): Message {
-        return messages.removeAt(index)
+        val message = messages.removeAt(index)
+        saveToStorage()
+        return message
     }
     
     /**
@@ -51,6 +59,32 @@ class MessageList {
      */
     fun clear() {
         messages.clear()
+        saveToStorage()
+    }
+    
+    /**
+     * Load messages from storage
+     */
+    fun loadFromStorage() {
+        storage?.let {
+            val storedMessages = it.loadMessages()
+            messages.clear()
+            messages.addAll(storedMessages)
+        }
+    }
+    
+    /**
+     * Save messages to storage
+     */
+    private fun saveToStorage() {
+        storage?.saveMessages(messages.toList())
+    }
+    
+    /**
+     * Clear messages from storage
+     */
+    fun clearStorage() {
+        storage?.clearMessages()
     }
     
     /**

@@ -18,11 +18,13 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
         init {
             System.loadLibrary("fluxorio")
         }
+        
+        private const val SHORT_MESSAGE_THRESHOLD = 1024
     }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var messageAdapter: MessageAdapter
-    private val messageList = MessageList()
+    private lateinit var messageList: MessageList
     private val uiHandler = Handler(Looper.getMainLooper())
     
     // Image picker launcher
@@ -54,8 +56,14 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Initialize message list with context for storage
+        messageList = MessageList(this)
+        
         setupRecyclerView()
         setupInputField()
+        
+        // Load messages from storage
+        loadMessages()
         
         // Initialize native components
         initThreadManager()
@@ -66,13 +74,15 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
         initSocketManager()
         // Start TCP server on port 8888
         if (startSocketServer(8888)) {
-            messageAdapter.addMessage(Message("TCP Server started on port 8888", false))
+            messageAdapter.addMessage(Message("TCP Server started on port 8888", false, MessageType.SHORT_MESSAGE))
         } else {
-            messageAdapter.addMessage(Message("Failed to start TCP Server", false))
+            messageAdapter.addMessage(Message("Failed to start TCP Server", false, MessageType.SHORT_MESSAGE))
         }
         
-        // Add welcome message
-        messageAdapter.addMessage(Message("Hello! How can I help you today?", false))
+        // Add welcome message only if no messages were loaded from storage
+        if (messageList.isEmpty()) {
+            messageAdapter.addMessage(Message("Hello! How can I help you today?", false, MessageType.SHORT_MESSAGE))
+        }
     }
 
     override fun onDestroy() {
@@ -85,10 +95,23 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
     }
 
     private fun setupRecyclerView() {
+        // Messages are already decrypted by IOBridge, so no decryption function needed
         messageAdapter = MessageAdapter(messageList)
         binding.recyclerViewMessages.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
+        }
+    }
+    
+    private fun loadMessages() {
+        messageList.loadFromStorage()
+        // Notify adapter that data has changed
+        if (messageList.isNotEmpty()) {
+            messageAdapter.notifyDataSetChanged()
+            // Scroll to bottom after loading
+            binding.recyclerViewMessages.post {
+                binding.recyclerViewMessages.smoothScrollToPosition(messageList.size() - 1)
+            }
         }
     }
 
@@ -114,8 +137,11 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
     private fun sendMessage() {
         val messageText = binding.editTextMessage.text?.toString()?.trim()
         if (!messageText.isNullOrEmpty()) {
+            // Determine message type based on length
+            val messageType = determineMessageType(messageText)
+            
             // Add user message to UI
-            messageAdapter.addMessage(Message(messageText, true))
+            messageAdapter.addMessage(Message(messageText, true, messageType))
             binding.editTextMessage.text?.clear()
             
             // Scroll to bottom
@@ -143,6 +169,19 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
         binding.progressIndicator.visibility = View.GONE
     }
     
+    /**
+     * Determines the message type based on text length
+     * @param text The message text
+     * @return MessageType.SHORT_MESSAGE if text length < 1024, otherwise MessageType.LONG_MESSAGE
+     */
+    private fun determineMessageType(text: String): MessageType {
+        return if (text.length < SHORT_MESSAGE_THRESHOLD) {
+            MessageType.SHORT_MESSAGE
+        } else {
+            MessageType.LONG_MESSAGE
+        }
+    }
+    
     private fun handleImageSelection(uri: Uri) {
         try {
             val inputStream: InputStream? = contentResolver.openInputStream(uri)
@@ -150,8 +189,8 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
             inputStream?.close()
             
             if (imageBytes != null) {
-                // Add user message to UI
-                messageAdapter.addMessage(Message("📷 Image selected (${imageBytes.size / 1024} KB)", true))
+                // Add user message to UI with IMAGE type
+                messageAdapter.addMessage(Message("📷 Image selected (${imageBytes.size / 1024} KB)", true, MessageType.IMAGE))
                 
                 // Scroll to bottom
                 binding.recyclerViewMessages.post {
@@ -165,7 +204,7 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
                 sendImageToThreadHandler(imageBytes)
             }
         } catch (e: Exception) {
-            messageAdapter.addMessage(Message("Error loading image: ${e.message}", false))
+            messageAdapter.addMessage(Message("Error loading image: ${e.message}", false, MessageType.SHORT_MESSAGE))
         }
     }
 
@@ -176,18 +215,22 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
             when (eventId) {
                 "message_response" -> {
                     hideLoader()
-                    messageAdapter.addMessage(Message(data, false))
+                    // Determine message type based on length
+                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    messageAdapter.addMessage(Message(data, false, messageType))
                 }
                 "socket_message" -> {
                     // Message received from socket client
-                    messageAdapter.addMessage(Message("[Socket] $data", false))
+                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    messageAdapter.addMessage(Message("[Socket] $data", false, messageType))
                 }
                 "image_info" -> {
                     // Image processing info
-                    messageAdapter.addMessage(Message(data, false))
+                    messageAdapter.addMessage(Message(data, false, MessageType.IMAGE))
                 }
                 else -> {
-                    messageAdapter.addMessage(Message("[$eventId] $data", false))
+                    val messageType = if (data.length <= 160) MessageType.SHORT_MESSAGE else MessageType.LONG_MESSAGE
+                    messageAdapter.addMessage(Message("[$eventId] $data", false, messageType))
                 }
             }
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
@@ -211,21 +254,21 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
 
     override fun onFloatEvent(eventId: String, data: Float) {
         uiHandler.post {
-            messageAdapter.addMessage(Message("[$eventId] Float: $data", false))
+            messageAdapter.addMessage(Message("[$eventId] Float: $data", false, MessageType.SHORT_MESSAGE))
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
         }
     }
 
     override fun onDoubleEvent(eventId: String, data: Double) {
         uiHandler.post {
-            messageAdapter.addMessage(Message("[$eventId] Double: $data", false))
+            messageAdapter.addMessage(Message("[$eventId] Double: $data", false, MessageType.SHORT_MESSAGE))
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
         }
     }
 
     override fun onBooleanEvent(eventId: String, data: Boolean) {
         uiHandler.post {
-            messageAdapter.addMessage(Message("[$eventId] Boolean: $data", false))
+            messageAdapter.addMessage(Message("[$eventId] Boolean: $data", false, MessageType.SHORT_MESSAGE))
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
         }
     }
@@ -235,14 +278,14 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
             when (eventId) {
                 "image_processed" -> {
                     hideLoader()
-                    messageAdapter.addMessage(Message("✅ Image processed: ${data.size} bytes returned", false))
+                    messageAdapter.addMessage(Message("✅ Image processed: ${data.size} bytes returned", false, MessageType.IMAGE))
                 }
                 "image_response" -> {
                     hideLoader()
-                    messageAdapter.addMessage(Message("✅ Image processing complete: ${data.size} bytes", false))
+                    messageAdapter.addMessage(Message("✅ Image processing complete: ${data.size} bytes", false, MessageType.IMAGE))
                 }
                 else -> {
-                    messageAdapter.addMessage(Message("[$eventId] ByteArray: ${data.size} bytes", false))
+                    messageAdapter.addMessage(Message("[$eventId] ByteArray: ${data.size} bytes", false, MessageType.SHORT_MESSAGE))
                 }
             }
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
