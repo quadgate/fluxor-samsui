@@ -5,14 +5,12 @@ plugins {
 
 android {
     namespace = "com.fluxorio"
-    compileSdk {
-        version = release(36)
-    }
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.fluxorio"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
 
@@ -49,6 +47,13 @@ android {
     buildFeatures {
         viewBinding = true
     }
+    packaging {
+        jniLibs {
+            // Ensure native libraries are page-aligned and uncompressed in the APK.
+            // For AGP 8.3+, useLegacyPackaging = false is recommended for 16KB support.
+            useLegacyPackaging = false
+        }
+    }
 }
 
 dependencies {
@@ -56,6 +61,7 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.constraintlayout)
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
