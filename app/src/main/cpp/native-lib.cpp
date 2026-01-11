@@ -3,6 +3,7 @@
 #include <thread>
 #include <chrono>
 #include <algorithm>
+#include <vector>
 #include "thread_manager.h"
 #include "io_bridge.h"
 #include "socket_manager.h"
@@ -392,6 +393,56 @@ Java_com_fluxorio_MainActivity_sendMessageToThreadHandler(JNIEnv* env, jobject /
         // Send processed message back to Kotlin via I/O bridge
         if (g_ioBridge != nullptr) {
             g_ioBridge->postStringEvent("message_response", processedMessage);
+        }
+    });
+}
+
+// Send image to thread handler - processes in background thread and sends back via I/O bridge
+extern "C" JNIEXPORT void JNICALL
+Java_com_fluxorio_MainActivity_sendImageToThreadHandler(JNIEnv* env, jobject /* this */, jbyteArray imageData) {
+    if (g_threadManager == nullptr || g_ioBridge == nullptr || env == nullptr || imageData == nullptr) {
+        return;
+    }
+    
+    // Get image data length
+    jsize length = env->GetArrayLength(imageData);
+    if (length <= 0) {
+        return;
+    }
+    
+    // Get byte array elements
+    jbyte* bytes = env->GetByteArrayElements(imageData, nullptr);
+    if (bytes == nullptr) {
+        return;
+    }
+    
+    // Copy image data to C++ vector
+    std::vector<uint8_t> imageDataCpp(reinterpret_cast<uint8_t*>(bytes), reinterpret_cast<uint8_t*>(bytes) + length);
+    
+    // Release byte array elements
+    env->ReleaseByteArrayElements(imageData, bytes, JNI_ABORT);
+    
+    // Submit task to thread pool for processing
+    g_threadManager->submitTask([imageDataCpp]() {
+        // Simulate image processing (e.g., resize, filter, analyze, etc.)
+        // In a real app, this could be actual image processing using OpenCV, image libraries, etc.
+        
+        // Simulate some processing time
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        
+        // Process the image (example: echo back processed image data or analysis results)
+        // For demonstration, we'll return a processed version (in real app, do actual processing)
+        std::vector<uint8_t> processedImage = imageDataCpp; // In real app, process the image here
+        
+        // You could also send back metadata as string
+        std::string imageInfo = "Image processed: " + std::to_string(imageDataCpp.size()) + " bytes";
+        
+        // Send processed image data back to Kotlin via I/O bridge
+        if (g_ioBridge != nullptr) {
+            g_ioBridge->postByteArrayEvent("image_response", processedImage.data(), processedImage.size());
+            
+            // Also send info as string
+            g_ioBridge->postStringEvent("image_info", imageInfo);
         }
     });
 }

@@ -1,13 +1,16 @@
 package com.fluxorio
 
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.fluxorio.databinding.ActivityMainBinding
+import java.io.InputStream
 
 class MainActivity : AppCompatActivity(), IoBridgeListener {
 
@@ -19,7 +22,13 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var messageAdapter: MessageAdapter
+    private val messageList = MessageList()
     private val uiHandler = Handler(Looper.getMainLooper())
+    
+    // Image picker launcher
+    private val imagePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { handleImageSelection(it) }
+    }
 
     // Native method declarations
     private external fun initThreadManager()
@@ -29,6 +38,7 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
     private external fun registerIOBridgeListener(listener: IoBridgeListener)
     private external fun unregisterIOBridgeListener()
     private external fun sendMessageToThreadHandler(message: String)
+    private external fun sendImageToThreadHandler(imageData: ByteArray)
     
     // Socket manager native methods
     private external fun initSocketManager()
@@ -75,7 +85,7 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
     }
 
     private fun setupRecyclerView() {
-        messageAdapter = MessageAdapter(mutableListOf())
+        messageAdapter = MessageAdapter(messageList)
         binding.recyclerViewMessages.apply {
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = messageAdapter
@@ -94,6 +104,10 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
 
         binding.buttonSend.setOnClickListener {
             sendMessage()
+        }
+        
+        binding.buttonImage.setOnClickListener {
+            imagePickerLauncher.launch("image/*")
         }
     }
 
@@ -128,6 +142,32 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
     private fun hideLoader() {
         binding.progressIndicator.visibility = View.GONE
     }
+    
+    private fun handleImageSelection(uri: Uri) {
+        try {
+            val inputStream: InputStream? = contentResolver.openInputStream(uri)
+            val imageBytes = inputStream?.readBytes()
+            inputStream?.close()
+            
+            if (imageBytes != null) {
+                // Add user message to UI
+                messageAdapter.addMessage(Message("📷 Image selected (${imageBytes.size / 1024} KB)", true))
+                
+                // Scroll to bottom
+                binding.recyclerViewMessages.post {
+                    binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
+                }
+                
+                // Show loading indicator
+                showLoader()
+                
+                // Send image to C++ thread handler for processing
+                sendImageToThreadHandler(imageBytes)
+            }
+        } catch (e: Exception) {
+            messageAdapter.addMessage(Message("Error loading image: ${e.message}", false))
+        }
+    }
 
     // IoBridgeListener implementation
     override fun onStringEvent(eventId: String, data: String) {
@@ -141,6 +181,10 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
                 "socket_message" -> {
                     // Message received from socket client
                     messageAdapter.addMessage(Message("[Socket] $data", false))
+                }
+                "image_info" -> {
+                    // Image processing info
+                    messageAdapter.addMessage(Message(data, false))
                 }
                 else -> {
                     messageAdapter.addMessage(Message("[$eventId] $data", false))
@@ -188,7 +232,19 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
 
     override fun onByteArrayEvent(eventId: String, data: ByteArray) {
         uiHandler.post {
-            messageAdapter.addMessage(Message("[$eventId] ByteArray: ${data.size} bytes", false))
+            when (eventId) {
+                "image_processed" -> {
+                    hideLoader()
+                    messageAdapter.addMessage(Message("✅ Image processed: ${data.size} bytes returned", false))
+                }
+                "image_response" -> {
+                    hideLoader()
+                    messageAdapter.addMessage(Message("✅ Image processing complete: ${data.size} bytes", false))
+                }
+                else -> {
+                    messageAdapter.addMessage(Message("[$eventId] ByteArray: ${data.size} bytes", false))
+                }
+            }
             binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
         }
     }
