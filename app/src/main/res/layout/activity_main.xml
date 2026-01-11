@@ -21,6 +21,20 @@
         app:layout_constraintTop_toTopOf="parent"
         tools:listitem="@layout/item_message" />
 
+    <com.google.android.material.progressindicator.CircularProgressIndicator
+        android:id="@+id/progressIndicator"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:visibility="gone"
+        app:indicatorColor="@color/accent_blue"
+        app:trackColor="@color/surface_variant"
+        app:trackThickness="4dp"
+        app:indicatorSize="48dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/inputLayout"
         android:layout_width="0dp"

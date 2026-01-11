@@ -3,6 +3,7 @@ package com.fluxorio
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -108,6 +109,9 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
                 binding.recyclerViewMessages.smoothScrollToPosition(messageAdapter.itemCount - 1)
             }
             
+            // Show loading indicator
+            showLoader()
+            
             // Send message to C++ thread handler for processing
             // The response will come back via onStringEvent callback with eventId "message_response"
             sendMessageToThreadHandler(messageText)
@@ -116,6 +120,14 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
             sendMessageToClients(messageText)
         }
     }
+    
+    private fun showLoader() {
+        binding.progressIndicator.visibility = View.VISIBLE
+    }
+    
+    private fun hideLoader() {
+        binding.progressIndicator.visibility = View.GONE
+    }
 
     // IoBridgeListener implementation
     override fun onStringEvent(eventId: String, data: String) {
@@ -123,6 +135,7 @@ class MainActivity : AppCompatActivity(), IoBridgeListener {
             // Handle message response from thread handler
             when (eventId) {
                 "message_response" -> {
+                    hideLoader()
                     messageAdapter.addMessage(Message(data, false))
                 }
                 "socket_message" -> {
